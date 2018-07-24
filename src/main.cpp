@@ -5,6 +5,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <string>
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
@@ -164,6 +165,25 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+// Consider KL, LCL and LCR three states
+int getSuccessorStates(string state, int lane)
+{
+    vector<string> states;
+    states.push_back("KL");
+    if (state.compare("KL") == 0){
+        if (lane == 1) {
+            states.push_back("LCL");
+            states.push_back("LCR");
+        }
+        else if (lane == 0)
+            states.push_back("LCR");
+        else if (lane == 2)
+            states.push_back("LCL");
+    }
+    //If state is "LCL" or "LCR", then just return "KL"
+    return states;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -202,9 +222,10 @@ int main() {
   }
   int lane = 1;
   double ref_vel = 0.0;
+  string state = "KL";
 
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane, &ref_vel](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane, &ref_vel, &state](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -241,6 +262,26 @@ int main() {
 
           	// Sensor Fusion Data, a list of all other cars on the same side of the road.
           	auto sensor_fusion = j[1]["sensor_fusion"];
+
+            //Like state transition function
+            vector<string> states = getSuccessorStates(state, lane);
+            float cost;
+            vector<float> costs;
+            vector<string> final_states;
+            vector<vector<Vehicle>> final_trajectories;
+
+            for (vector<string>::iterator it = states.begin(); it != states.end(); ++it) {
+                vector<Vehicle> trajectory = generate_trajectory(*it, predictions);
+                if (trajectory.size() != 0) {
+                    cost = calculate_cost(*this, predictions, trajectory);
+                    costs.push_back(cost);
+                    final_trajectories.push_back(trajectory);
+                }
+            }
+
+            vector<float>::iterator best_cost = min_element(begin(costs), end(costs));
+            int best_idx = distance(begin(costs), best_cost);
+            //return final_trajectories[best_idx];
 
             int prev_size = previous_path_x.size();
             if (prev_size > 0)
