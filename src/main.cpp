@@ -182,10 +182,7 @@ double get_accel(double ref_vel){
 
 double get_decel(double dist, double vel_diff){
     if(vel_diff > 0.)
-        if(dist<10)
-            return 0.448 * (1.- (dist-5.)/30.);
-        else
-            return 0.448 * (1.- (dist-5.)/30.) * (1.- exp(-vel_diff));
+        return 0.448 * (1.- (dist-8.)/30.) * (1.- exp(-vel_diff));
     else
         return 0.448 * (1.- dist/30.) * 0.2;
 }
