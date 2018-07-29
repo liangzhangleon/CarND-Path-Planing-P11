@@ -222,7 +222,7 @@ bool Vehicle::get_vehicle_behind(vector<Vehicle> sensor_fusion, int lane, Vehicl
 bool Vehicle::get_vehicle_ahead(vector<Vehicle> sensor_fusion, int lane, Vehicle & rVehicle) {
     //Returns a true if a vehicle is found ahead of the current vehicle, false otherwise.
     //The passed reference rVehicle is updated if a vehicle is found.
-    int min_s = this->s + 40;
+    int min_s = this->s + 30;
     bool found_vehicle = false;
     Vehicle temp_vehicle;
     for (vector<Vehicle>::iterator it = sensor_fusion.begin(); it != sensor_fusion.end(); ++it) {

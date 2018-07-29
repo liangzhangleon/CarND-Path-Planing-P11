@@ -175,6 +175,22 @@ int compute_lane(double d){
         return 2;
 }
 
+double get_accel(double ref_vel){
+    double vel_diff = 49.7 - ref_vel;
+    return 0.336 * (1.- exp(- 0.25 * vel_diff));
+}
+
+double get_decel(double dist, double vel_diff){
+    if(vel_diff > 0.)
+        if(dist<10)
+            return 0.448 * (1.- (dist-5.)/30.);
+        else
+            return 0.448 * (1.- (dist-5.)/30.) * (1.- exp(-vel_diff));
+    else
+        return 0.448 * (1.- dist/30.) * 0.2;
+}
+
+
 int main() {
   uWS::Hub h;
 
@@ -282,7 +298,10 @@ int main() {
               car_s = end_path_s;
 
             bool too_close = false;
+            double vel_diff = 0.;
+            double dist = 0.;
 
+            //If too close, check distance and velocity difference with the car ahead
             for(int i=0;  i< sensor_fusion.size(); i++)
             {
               float d = sensor_fusion[i][6];
@@ -292,16 +311,20 @@ int main() {
                 double vy = sensor_fusion[i][4];
                 double check_speed = sqrt(vx*vx+vy*vy);
                 double check_car_s = sensor_fusion[i][5];
-
                 check_car_s += ((double)prev_size*0.02*check_speed);
-                if(check_car_s>car_s && (check_car_s-car_s)<20)
+                if(check_car_s>car_s && (check_car_s-car_s)<30){
                   too_close = true;
+                  dist = check_car_s-car_s;
+                  vel_diff = car_speed - check_speed;
+                }
               }
             }
-            if(too_close)
-              ref_vel -=0.336;
+            if(too_close){
+              ref_vel -=get_decel(dist, vel_diff);
+              std::cout<<"Get decel" << get_decel(dist, vel_diff) << std::endl;
+            }
             else if(ref_vel<49.7)
-              ref_vel +=0.336;
+              ref_vel +=get_accel(ref_vel);
 
           	json msgJson;
 
