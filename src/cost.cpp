@@ -1,112 +1,75 @@
 #include "cost.h"
-#include "vehicle.h"
-#include <functional>
 #include <iterator>
-#include <map>
 #include <math.h>
 
-const float REACH_GOAL = pow(10, 6);
-const float EFFICIENCY = pow(10, 5);
-
-
-float goal_distance_cost(const Vehicle & vehicle, const vector<Vehicle> & trajectory, const map<int, vector<Vehicle>> & predictions, map<string, float> & data) {
-    /*
-    Cost increases based on distance of intended lane (for planning a lane change) and final lane of trajectory.
-    Cost of being out of goal lane also becomes larger as vehicle approaches goal distance.
-    */
-    float cost;
-    float distance = data["distance_to_goal"];
-    if (distance > 0) {
-        cost = 1 - 2*exp(-(abs(2.0*vehicle.goal_lane - data["intended_lane"] - data["final_lane"]) / distance));
-    } else {
-        cost = 1;
-    }
-    return cost;
-}
-
-float inefficiency_cost(const Vehicle & vehicle, const vector<Vehicle> & trajectory, const map<int, vector<Vehicle>> & predictions, map<string, float> & data) {
-    /*
-    Cost becomes higher for trajectories with intended lane and final lane that have traffic slower than vehicle's target speed.
-    */
-
-    float proposed_speed_intended = lane_speed(predictions, data["intended_lane"]);
-    if (proposed_speed_intended < 0) {
-        proposed_speed_intended = vehicle.target_speed;
-    }
-
-    float proposed_speed_final = lane_speed(predictions, data["final_lane"]);
-    if (proposed_speed_final < 0) {
-        proposed_speed_final = vehicle.target_speed;
-    }
-
-    float cost = (2.0*vehicle.target_speed - proposed_speed_intended - proposed_speed_final)/vehicle.target_speed;
-
-    return cost;
-}
-
-float lane_speed(const map<int, vector<Vehicle>> & predictions, int lane) {
-    /*
-    All non ego vehicles in a lane have the same speed, so to get the speed limit for a lane,
-    we can just find one vehicle in that lane.
-    */
-    for (map<int, vector<Vehicle>>::const_iterator it = predictions.begin(); it != predictions.end(); ++it) {
-        int key = it->first;
-        Vehicle vehicle = it->second[0];
-        if (vehicle.lane == lane && key != -1) {
-            return vehicle.v;
+float lane_speed(const Vehicle & vehicle, const vector<Vehicle>& sensor_fusion, int lane) {
+    //found a vehicle ahead on intended lane
+    int min_s = vehicle.s + 40;
+    bool found_vehicle = false;
+    Vehicle ahead_vehicle;
+    for (vector<Vehicle>::const_iterator it = sensor_fusion.begin(); it != sensor_fusion.end(); ++it) {
+        if (it->lane == lane && it->s > vehicle.s && it->s < min_s) {
+            min_s = it->s;
+            ahead_vehicle = *it;
+            found_vehicle = true;
         }
     }
-    //Found no vehicle in the lane
-    return -1.0;
+    if(found_vehicle)
+        return ahead_vehicle.vel;
+    else
+        return vehicle.target_speed;
 }
 
-float calculate_cost(const Vehicle & vehicle, const map<int, vector<Vehicle>> & predictions, const vector<Vehicle> & trajectory) {
+float inefficiency_cost(const Vehicle & vehicle, const vector<Vehicle> & trajectory, const vector<Vehicle>& sensor_fusion) {
+    int lane = trajectory[1].lane;
+    int intended_lane = trajectory[1].lane;
+    if (trajectory[1].state.compare("PLCL") == 0) {
+        intended_lane = lane - 1;
+    }
+    else if (trajectory[1].state.compare("PLCR") == 0) {
+        intended_lane = lane + 1;
+    }
+    float intended_lane_speed = lane_speed(vehicle, sensor_fusion, intended_lane);
+    float trajectory_lane_speed = lane_speed(vehicle, sensor_fusion, lane);
+    float cost = (2.*vehicle.target_speed - trajectory_lane_speed - intended_lane_speed)/vehicle.target_speed;
+    return cost;
+}
+
+float collision_cost(const Vehicle & vehicle, const vector<Vehicle> & trajectory, const vector<Vehicle>& sensor_fusion) {
+    if(trajectory[0].lane == trajectory[1].lane)
+        return 0.;
+    int new_lane = trajectory[1].lane;
+    bool collison = false;
+    //Check if a lane change is possible
+    for (vector<Vehicle>::const_iterator it = sensor_fusion.begin(); it != sensor_fusion.end(); ++it) {
+        if (it->lane == new_lane) {
+           double distance = fabs(it->s - vehicle.s);
+           if (distance <= 8.)
+               return 1.;
+           else if (it->s - vehicle.s > 8.)
+               if(vehicle.s + vehicle.vel >= it->s + it->vel)
+                   return 1.;
+           else if (vehicle.s - it->s > 8.)
+               if(vehicle.s + vehicle.vel <= it->s + it->vel)
+                   return 1.;
+        }
+    }
+    return 0.;
+}
+
+float calculate_cost(const Vehicle & vehicle, const vector<Vehicle>& sensor_fusion, const vector<Vehicle> & trajectory) {
     /*
-    Sum weighted cost functions to get total cost for trajectory.
+    Sum collision cost and inefficient cost
     */
-    map<string, float> trajectory_data = get_helper_data(vehicle, trajectory, predictions);
     float cost = 0.0;
 
     //Add additional cost functions here.
-    vector< function<float(const Vehicle & , const vector<Vehicle> &, const map<int, vector<Vehicle>> &, map<string, float> &)>> cf_list = {goal_distance_cost, inefficiency_cost};
-    vector<float> weight_list = {REACH_GOAL, EFFICIENCY};
-
-    for (int i = 0; i < cf_list.size(); i++) {
-        float new_cost = weight_list[i]*cf_list[i](vehicle, trajectory, predictions, trajectory_data);
-        cost += new_cost;
-    }
-
+    const float COLLISION = pow(10, 7);
+    const float EFFICIENCY = pow(10, 5);
+    cost = EFFICIENCY * inefficiency_cost(vehicle, trajectory, sensor_fusion);
+    cost += COLLISION * collision_cost(vehicle, trajectory, sensor_fusion);
     return cost;
-
 }
 
-map<string, float> get_helper_data(const Vehicle & vehicle, const vector<Vehicle> & trajectory, const map<int, vector<Vehicle>> & predictions) {
-    /*
-    Generate helper data to use in cost functions:
-    indended_lane: the current lane +/- 1 if vehicle is planning or executing a lane change.
-    final_lane: the lane of the vehicle at the end of the trajectory.
-    distance_to_goal: the distance of the vehicle to the goal.
 
-    Note that indended_lane and final_lane are both included to help differentiate between planning and executing
-    a lane change in the cost functions.
-    */
-    map<string, float> trajectory_data;
-    Vehicle trajectory_last = trajectory[1];
-    float intended_lane;
-
-    if (trajectory_last.state.compare("PLCL") == 0) {
-        intended_lane = trajectory_last.lane + 1;
-    } else if (trajectory_last.state.compare("PLCR") == 0) {
-        intended_lane = trajectory_last.lane - 1;
-    } else {
-        intended_lane = trajectory_last.lane;
-    }
-
-    float distance_to_goal = vehicle.goal_s - trajectory_last.s;
-    float final_lane = trajectory_last.lane;
-    trajectory_data["intended_lane"] = intended_lane;
-    trajectory_data["final_lane"] = final_lane;
-    trajectory_data["distance_to_goal"] = distance_to_goal;
-    return trajectory_data;
-}
 

@@ -9,7 +9,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
-#include "trajectory.hpp"
+#include "vehicle.h"
 #include "spline.h"
 
 using namespace std;
@@ -166,23 +166,13 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
-// Consider KL, LCL and LCR three states
-int getSuccessorStates(string state, int lane)
-{
-    vector<string> states;
-    states.push_back("KL");
-    if (state.compare("KL") == 0){
-        if (lane == 1) {
-            states.push_back("LCL");
-            states.push_back("LCR");
-        }
-        else if (lane == 0)
-            states.push_back("LCR");
-        else if (lane == 2)
-            states.push_back("LCL");
-    }
-    //If state is "LCL" or "LCR", then just return "KL"
-    return states;
+int compute_lane(double d){
+    if(d>0 && d<=4)
+        return 0;
+    if(d>4 && d<=8)
+        return 1;
+    if(d>8 && d<=12)
+        return 2;
 }
 
 int main() {
@@ -262,28 +252,31 @@ int main() {
           	double end_path_d = j[1]["end_path_d"];
 
           	// Sensor Fusion Data, a list of all other cars on the same side of the road.
-          	auto sensor_fusion = j[1]["sensor_fusion"];
+            // [ id, x, y, vx, vy, s, d]
 
-            //Like state transition function
-            vector<string> states = getSuccessorStates(state, lane);
-            float cost;
-            vector<float> costs;
-            vector<string> final_states;
-            vector<vector<Vehicle>> final_trajectories;
-
-            for (vector<string>::iterator it = states.begin(); it != states.end(); ++it) {
-                vector<Vehicle> trajectory = generate_trajectory(*it, predictions);
-                if (trajectory.size() != 0) {
-                    cost = calculate_cost(*this, predictions, trajectory);
-                    costs.push_back(cost);
-                    final_trajectories.push_back(trajectory);
-                }
+            //Behavior planner comes in
+            Vehicle ego_car(lane, car_s, car_speed, 0., state);
+            auto sensor_fusion = j[1]["sensor_fusion"];
+            vector<Vehicle> sensor_fusion_vehicle;
+            for(int i=0;  i< sensor_fusion.size(); i++)
+            {
+              float  check_car_d = sensor_fusion[i][6];
+              double check_lane = compute_lane(check_car_d);
+              double check_car_s = sensor_fusion[i][5];
+              double vx = sensor_fusion[i][3];
+              double vy = sensor_fusion[i][4];
+              double check_speed = sqrt(vx*vx+vy*vy);
+              sensor_fusion_vehicle.push_back(Vehicle(check_lane, check_car_s, check_speed, 0.));
             }
 
-            vector<float>::iterator best_cost = min_element(begin(costs), end(costs));
-            int best_idx = distance(begin(costs), best_cost);
-            //return final_trajectories[best_idx];
+            //State transition function
+            vector<Vehicle> behav_traj = ego_car.choose_next_state(sensor_fusion_vehicle);
+            lane = behav_traj[1].lane;
+            std::cout << "Lane: " << lane << std::endl;
+            state = behav_traj[1].state;
+            std::cout << "State: " << state << std::endl;
 
+            //motion planner comes in
             int prev_size = previous_path_x.size();
             if (prev_size > 0)
               car_s = end_path_s;
@@ -301,15 +294,14 @@ int main() {
                 double check_car_s = sensor_fusion[i][5];
 
                 check_car_s += ((double)prev_size*0.02*check_speed);
-                if(check_car_s>car_s && (check_car_s-car_s)<30)
+                if(check_car_s>car_s && (check_car_s-car_s)<20)
                   too_close = true;
               }
             }
             if(too_close)
-              ref_vel -=0.224;
-            else if(ref_vel<49.5)
-              ref_vel +=0.224;
-
+              ref_vel -=0.336;
+            else if(ref_vel<49.7)
+              ref_vel +=0.336;
 
           	json msgJson;
 
@@ -364,17 +356,7 @@ int main() {
               sp_nodes_x[i] = shift_x * cos(-ref_yaw) - shift_y * sin(-ref_yaw);
               sp_nodes_y[i] = shift_x * sin(-ref_yaw) + shift_y * cos(-ref_yaw);
             }
-            /*double dist_inc = 0.5;
-            for(int i = 0; i < 50; i++)
-            {
-              double next_s = car_s + (i+1)*dist_inc;
-              double next_d = car_d;
-              vector<double> next_p = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-              next_x_vals.push_back(next_p[0]);
-              next_y_vals.push_back(next_p[1]);
-              //next_x_vals.push_back(car_x+(dist_inc*i)*cos(deg2rad(car_yaw)));
-              //next_y_vals.push_back(car_y+(dist_inc*i)*sin(deg2rad(car_yaw)));
-            }*/
+
             //construct splines
             tk::spline sp;
             sp.set_points(sp_nodes_x, sp_nodes_y);
@@ -395,7 +377,7 @@ int main() {
 
             double x_add_on = 0;
 
-            for(int i=0; i<=50-prev_size; i++){
+            for(int i=0; i<=30-prev_size; i++){
               double N = target_dist/(0.02*ref_vel/2.24);
               double x_point = x_add_on + target_x/N;
               double y_point = sp(x_point);
@@ -416,7 +398,7 @@ int main() {
             }
 
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+            // A path made up of (x,y) points that the car will visit sequentially every 0.02 seconds
           	msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
