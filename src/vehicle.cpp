@@ -23,7 +23,7 @@ Vehicle::Vehicle(int lane, float s, float v, float a, string state) {
 
     preferred_buffer = 6;
     max_acceleration = 5;
-    target_speed = 50.0/2.24;
+    target_speed = 50.0;
 
 }
 

@@ -175,16 +175,17 @@ int compute_lane(double d){
         return 2;
 }
 
+//two helper functions to get acceleration and deceleration, which can be further tuned to smooth motion planning
 double get_accel(double ref_vel){
     double vel_diff = 49.7 - ref_vel;
-    return 0.336 * (1.- exp(- 0.25 * vel_diff));
+    return 0.336 * (1.- exp(- 0.5 * vel_diff));
 }
 
 double get_decel(double dist, double vel_diff){
     if(vel_diff > 0.)
-        return 0.448 * (1.- (dist-5.5)/30.) * (1.- exp(-vel_diff));
+        return 0.448 * (1.- (dist-5.4)/25.) * (1.- exp(-vel_diff));
     else
-        return 0.448 * (1.- dist/30.) * 0.2;
+        return 0.448 * (1.- dist/25.) * 0.2;
 }
 
 
@@ -285,9 +286,8 @@ int main() {
             //State transition function
             vector<Vehicle> behav_traj = ego_car.choose_next_state(sensor_fusion_vehicle);
             lane = behav_traj[1].lane;
-            std::cout << "Lane: " << lane << std::endl;
             state = behav_traj[1].state;
-            std::cout << "State: " << state << std::endl;
+            std::cout << "Lane: " << lane <<" State: " << state << std::endl;
 
             //motion planner comes in
             int prev_size = previous_path_x.size();
@@ -309,7 +309,7 @@ int main() {
                 double check_speed = sqrt(vx*vx+vy*vy);
                 double check_car_s = sensor_fusion[i][5];
                 check_car_s += ((double)prev_size*0.02*check_speed);
-                if(check_car_s>car_s && (check_car_s-car_s)<30){
+                if(check_car_s>car_s && (check_car_s-car_s)<25){
                   too_close = true;
                   dist = check_car_s-car_s;
                   vel_diff = car_speed - check_speed;
@@ -318,7 +318,7 @@ int main() {
             }
             if(too_close){
               ref_vel -=get_decel(dist, vel_diff);
-              std::cout<<"Get decel" << get_decel(dist, vel_diff) << std::endl;
+              // std::cout<<"Get decel" << get_decel(dist, vel_diff) << std::endl;  //for debugging
             }
             else if(ref_vel<49.7)
               ref_vel +=get_accel(ref_vel);
