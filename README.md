@@ -89,6 +89,13 @@ A really helpful resource for doing this project and creating smooth trajectorie
     ```
 
 ## Behavior planning
+I use finite state machine for my behavior planner. The state transition function is `choose_next_state(vector<Vehicle> sensor_fusion)` in `Vehicle` class in vehicle.cpp. The state transition function has the following steps.
+
+* find possible successor_states. In general, the car just needs to decide to keep lane, change to left lane or change to right lane. But before changing lane, the car has to in a preparing lane change state as intermidiate step. For details, see code 58-89 in vehicle.cpp. 
+* generate a (simple) trajectory for all the succesor states. In my case, I only consider the vehicle in next time stamp. For details, see code 91-197 in vehicle.cpp. 
+* Use a cost function to evaluate each trajectory and find the best trajectoy. For the cost function, I consider inefficient cost and collison cost. Inefficient cost punishes the lane which the ego-car drives slower. Collison cost only comes into play if there is a potential collison during lane change. See cost.cpp for details. 
+
+Note I only need lane number for my motion planner.
 ## Motion planning
 From "project walkthrough and Q&A", we have a decent starting point for the motion planner. I mostly followed the methods introduced in that video.
 
