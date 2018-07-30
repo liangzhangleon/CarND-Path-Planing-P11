@@ -90,9 +90,11 @@ A really helpful resource for doing this project and creating smooth trajectorie
 
 ## Behavior planning
 ## Motion planning
+From "project walkthrough and Q&A", we have a decent starting point for the motion planner. I mostly followed the methods introduced in that video.
 
-
-
+* Use splines and Frenet coordinates to generate smooth trajectory. See code line 329-418 in main.cpp for details.
+* Use previous path to have a smooth transition. See code line 387-391 for details.
+* Check if there is a car ahead in ego-lane which is too close to ego car. Then determine how much the ego-car decelerate or accelerate. See code line 297-324 in main.cpp. Instead of using constant acceleration and deceleration, I use two functions called `get_accel(double ref_vel)` and `get_decel(double dist, double vel_diff)` to have a more dynamic motion.
 
 ## Outlook
 The behavior and motion planner can still be further improved. The followings are some points which I have thought:
