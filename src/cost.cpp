@@ -4,7 +4,7 @@
 
 float lane_speed(const Vehicle & vehicle, const vector<Vehicle>& sensor_fusion, int lane) {
     //found a vehicle ahead on intended lane
-    int min_s = vehicle.s + 30;
+    int min_s = vehicle.s + 45.;
     bool found_vehicle = false;
     Vehicle ahead_vehicle;
     for (vector<Vehicle>::const_iterator it = sensor_fusion.begin(); it != sensor_fusion.end(); ++it) {
@@ -36,7 +36,8 @@ float inefficiency_cost(const Vehicle & vehicle, const vector<Vehicle> & traject
 }
 
 float collision_cost(const Vehicle & vehicle, const vector<Vehicle> & trajectory, const vector<Vehicle>& sensor_fusion) {
-    if(trajectory[0].lane == trajectory[1].lane)
+    if(trajectory[1].state.compare("KL") == 0 || trajectory[1].state.compare("PLCL") == 0 || 
+       trajectory[1].state.compare("PLCR") == 0)
         return 0.;
     int new_lane = trajectory[1].lane;
     bool collison = false;
@@ -47,10 +48,10 @@ float collision_cost(const Vehicle & vehicle, const vector<Vehicle> & trajectory
            if (distance <= 6.)
                return 1.;
            else if (it->s - vehicle.s > 6.)
-               if(vehicle.s + vehicle.vel >= it->s + it->vel)
+               if( (it->s + 2.* it->vel - vehicle.s - 2.*vehicle.vel) < 5.)
                    return 1.;
            else if (vehicle.s - it->s > 6.)
-               if(vehicle.s + vehicle.vel <= it->s + it->vel)
+               if(vehicle.s + 2. * vehicle.vel - it->s - 2.* it->vel < 5.)
                    return 1.;
         }
     }
